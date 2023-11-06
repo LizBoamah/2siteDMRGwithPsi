@@ -1,4 +1,5 @@
-function [lowest_energy,energy_values, M,E_exact] = two_site_dmrg(N, bd, U, mu, t,NrEl, max_sweeps)
+function [lowest_energy, full_sweep_energy, M, E_exact] = two_site_dmrg(N, bd, U, mu, t, NrEl, max_sweeps)
+
 % TWO_SITE_DMRG - Perform two-site DMRG for the Hubbard model
 %
 % N - number of sites
@@ -8,47 +9,39 @@ function [lowest_energy,energy_values, M,E_exact] = two_site_dmrg(N, bd, U, mu, 
 % t - hopping parameter
 % max_sweeps - maximum number of sweeps
 % tol - convergence tolerance
-
 % energy - ground state energy
 % M - MPS representation (cell array of tensors)
- E_left = zeros(max_sweeps,1);
- E_right = zeros(max_sweeps,1);
- energy_values = zeros(max_sweeps,2);
+
+ E_left = zeros(max_sweeps,N-1);
+ E_right = zeros(max_sweeps,N-1);
+ full_sweep_energy = zeros(1, max_sweeps);
+
+ 
 
 % Initialize a basis states to form a initial wave function
-%Psi =mps_form_full_basis_new(bd,N,[0 1]',NaN);
+% B =mps_form_full_basis_new(bd,N,[0 1]',NaN);
  dimvec = repelem(bd,N);
  Dim = prod(dimvec);
 
- B=mps_form_full_basis_new(bd,N,[0 1]',NrEl);
+  B=mps_form_full_basis_new(bd,N,[0 1]',NrEl);
  DimSubspace = size(B,1);
  C=rand(DimSubspace,1);
 
     % fill Psi
     Psi=zeros(Dim,1);
+    ind = zeros(DimSubspace,1);
     for i=1:DimSubspace
         Bi=num2cell(B(i,:));
-        ind=sub2ind(dimvec,Bi{:});
-        Psi(ind) = C(i);
+        ind(i)=sub2ind(dimvec,Bi{:});
+        Psi(ind(i)) = C(i);
     end%for i
-
-     Psi = Psi/norm(Psi);
+    ind=sort(ind);
+    
 % 
 % % %   Psi = mean(Psi, 2);
 % % %  Psi = sum(Psi, 2);
  %  Psi= Psi(:, 1);
 % %   Psi = Psi/norm(Psi);
-
-
-
-% Set direction: right, left, mixed
-dir = 'mixed';
- % Initialize the MPS representation
-    M = mps_canonical(Psi,bd, N, dir,1);
-    % Calculate the complex conjugate of each MPS tensor in the cell array
-    M_ = cellfun(@conj, M, 'UniformOutput', false);
-
-   % all_symmetric = is_MPS_symmetric(M);
 
 % Construct the MPO for the Hubbard Hamiltonian
  Ho = construct_Hamiltonian(t,U, N);
@@ -56,8 +49,32 @@ dir = 'mixed';
  H = hubbard_mpo_site(U, t,mu, N);
   % H = identity_MPO(N, bd);
   Hmatrix = mpo_to_hamiltonian(H);
-  [~,E_exact1] = exact_diagonalization(Hmatrix);
+  [~,~] = exact_diagonalization(Hmatrix);
 [~,E_exact] = exact_diagonalization(Ho);
+ % ind=sort(ind);
+H_subspace=Hmatrix(ind,ind);
+[Psi_s,~]=eig(H_subspace,'vector');
+for i=1:DimSubspace
+    Psi(ind(i)) = Psi_s(i,1);
+end%for i
+  Psi = Psi/norm(Psi);
+
+
+% Set direction: right, left, mixed
+dir = 'mixed';
+ % Initialize the MPS representation
+    M = mps_canonical(Psi,bd, N, dir,1);
+    % Calculate the complex conjugate of each MPS tensor in the cell array
+    % M_ = cellfun(@conj, M, 'UniformOutput', false);
+     % Update the conjugate
+       numTensors = length(M);  % Assuming M is a 1D cell array
+        M_ = cell(1, numTensors);
+            for i = 1:numTensors
+                M_{i} = conj(M{i});
+            end
+
+   % all_symmetric = is_MPS_symmetric(M);
+
  
 %  H = MPOcompress(Ho,bd, N);
  
@@ -71,11 +88,13 @@ for sweep = 1:max_sweeps
         effective_H = build_effective_hamiltonian(left_env, H{s}, H{s+1}, right_env, s, N);
     
         % Diagonalize the effective Hamiltonian
-        [eig_vec, eig_val] = eig((effective_H+effective_H')/2);
-         energy_new1 = (min(diag(eig_val)));
+         [eig_vec, eig_val] = eig((effective_H+effective_H')/2);
+        % [eig_vec, eig_val] = eigs(effective_H,1,'smallestreal');
+         energy_new1 = sort(diag(eig_val),'ascend');
+         energy_new1 = energy_new1(1);
          idx = find(diag(eig_val) == eig_val, 1);
           psi = eig_vec(:, idx);
-           E_left(sweep) = energy_new1;
+           E_left(sweep,s) = energy_new1;
 
  % Calculate the new energy after completing a left-to-right sweep
        % Reshape psi and perform SVD for s=1
@@ -93,12 +112,12 @@ for sweep = 1:max_sweeps
 
         if s == 1
                     % Update M{s} and M{s+1}
-                    M{s} = reshape(U, [1, size(M{s}, 2), size(S, 1)]);
+                    M{s} = reshape(U, [1, size(M{s}, 3), size(S, 1)]);
                     M{s+1} = reshape(S*V', [size(S, 2), size(M{s+1}, 1), size(M{s+1}, 3)]);
                 elseif s == N-1
-                    % Update M{s-1} and M{s}
-                    M{s} = reshape(U * S, [size(M{s}, 1), size(M{s}, 2), size(S, 2)]);
-                    M{s+1} = reshape(V, [size(S, 1), size(M{s+1}, 2), 1]);
+                    % Update M{s} and M{s+1}
+                    M{s} = reshape(U , [size(M{s}, 1), size(M{s}, 3), size(S, 1)]);
+                    M{s+1} = reshape(S*V', [size(S, 2), size(M{s+1}, 1), 1]);
                   else
                      M{s} = reshape(U, [size(M{s}, 1), size(M{s}, 2), size(S, 1)]);
                      M{s+1} = reshape(S*V', [size(S, 2), size(M{s+1}, 2), size(M{s+1}, 3)]);
@@ -115,11 +134,15 @@ for s = N-1:-1:1
         effective_H = build_effective_hamiltonian(left_env, H{s}, H{s+1}, right_env, s, N);
     
         % Diagonalize the effective Hamiltonian
-        [eig_vec, eig_val] = eig((effective_H + effective_H')/2);
-        energy_new2 = (min(diag(eig_val)));
+         [eig_vec, eig_val] = eig((effective_H + effective_H')/2);
+        % [eig_vec, eig_val] = eigs(effective_H,1,'smallestreal');
+         energy_new2 = sort(diag(eig_val),'ascend');
+         energy_new2 = energy_new2(1);
+        % energy_new2 = (min(diag(eig_val)));
         idx = find(diag(eig_val) == eig_val, 1);
         psi = eig_vec(:, idx);
-          E_right(sweep) =  energy_new2;
+          E_right(sweep,s) =  energy_new2;
+          
     if s == N-1
         % Reshape psi and perform SVD for s=N
         psi_matrix = reshape(psi, [size(M{s}, 1) * size(M{s}, 2), size(M{s+1}, 2) * size(M{s+1}, 3)]);
@@ -134,18 +157,17 @@ for s = N-1:-1:1
     [U, S, V] = svd(psi_matrix, 'econ');
 
    if s == 1
-        % Update M{s} and M{s+1}
-        M{s} = reshape(U * S, [1, size(M{s}, 2), size(S, 1)]);
-        M{s+1} = reshape(V', [size(S, 2), size(M{s+1}, 2), size(M{s+1}, 3)]);
-    elseif s == N-1
-        % Update M{s-1} and M{s}
-        M{s} = reshape(U, [size(M{s}, 1), size(M{s}, 2), size(S, 1)]);
-        M{s+1} = reshape(S * V', [size(S, 2), size(M{s+1}, 2), 1]);
-    else
-        % Update M{s} and M{s+1}
-        M{s} = reshape(U * S, [size(M{s}, 1), size(M{s}, 2), size(S, 1)]);
-        M{s+1} = reshape(V', [size(S, 2), size(M{s+1}, 2), size(M{s+1}, 3)]);
-    end
+                    % Update M{s} and M{s+1}
+                    M{s} = reshape(U*S, [size(left_env, 2), size(H{s}, 2), size(S, 1)]);
+                    M{s+1} = reshape(V', [size(S, 2), size(H{s+1}, 2), size(right_env, 1)]);
+                elseif s == N-1
+                    % Update M{s} and M{s+1}
+                    M{s} = reshape(U *S, [size(left_env, 1), size(H{s}, 2), size(S, 1)]);
+                    M{s+1} = reshape(V', [size(S, 2), size(H{s+1}, 2), size(right_env,1)]);
+                  else
+                     M{s} = reshape(U*S, [size(left_env, 1), size(H{s}, 2), size(S, 1)]);
+                     M{s+1} = reshape(V', [size(S, 2), size(H{s+1}, 2), size(right_env, 1)]);
+  end
   
     % Update the conjugate MPS tensor M_
     M_{s} = conj(M{s});
@@ -153,11 +175,10 @@ for s = N-1:-1:1
 end
 
 % Store energy value after completing one full sweep
-         
-       energy_values(sweep,1) = energy_new1;
-       energy_values(sweep,2) = energy_new2;
-        lowest_energy = min(energy_values);
+       full_sweep_energy(sweep) = E_right(sweep,N-1); % energy after right-to-left sweep
+       lowest_energy = full_sweep_energy(end);
 
+     
  
   
 end

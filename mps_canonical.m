@@ -64,11 +64,11 @@ function [M] = mps_canonical(Psi,d, N, dir,s)
                     [U, S, V] = svd(W, 'econ');
                     new_ml = size(U, 1);
 
-                    U = reshape(U, [ml, d, new_ml]);
+                    M = reshape(U, [ml, d, new_ml]);
                     V = S * V';
 
                     
-                        M{l} = U(:, :, :);
+                        M{l} = M(:, :, :);
                     
     
                     Psi = V;
@@ -77,34 +77,30 @@ function [M] = mps_canonical(Psi,d, N, dir,s)
  
 
                 % right canonical from N to s+1
-                for l=N:-1:s+2
+                for l=N:-1:s+1
                         W=reshape(Psi, d^(l-1),m_mix*d);
                       [U,S,V]=svd(W, 'econ');
-                      V = ctranspose(V);
+                       V = ctranspose(V);
                       new_mlx = size(V, 1);
                       V = reshape(V, [new_mlx, d, m_mix]);
-                     
-                        M{l}= V(:,:,:);
-                     
-                      Psi = U*S;
+                      U = U*S;
+                       M{l}= V(:,:,:);
+                       Psi = U;
                       m_mix = new_mlx; 
 
                 end 
-%                  %--- s-th mode
-%                  %Psi = reshape(Psi, [m_mix, d, new_ml]);
-%                  M{s} = reshape(Psi, [d, ml*d, new_mlx]);
-%                    M{s} = Psi(:,:,:);
+
             % Sites s and s+1
-            W = reshape(Psi, [ml * d, m_mix * d]);
+            W = reshape(Psi, [ml * d, new_mlx]);
             [U, S, V] = svd(W, 'econ');
             
-            new_ml = size(U, 1);
-            U = reshape(U, [ml, d, new_ml]);
+               new_mlx = size(U, 1);
+               U = reshape(U*S, [ml, d, new_mlx]);
+              % U = reshape(U, [ml, new_mlx, new_mlx]);
             M{s} = U(:, :, :);
-            
-            new_mlx = size(V, 2);
-            V = reshape(V, [new_mlx, d, m_mix]);
-            M{s+1} = V(:, :, :);
+            % % new_mlx = size(V', 2);
+            % V = reshape(V, [new_ml, d, m_mix]);
+            % M{s+1} = V(:, :, :);
                 
 
            

@@ -15,7 +15,8 @@ mu = 0;
 
 
 % Run the two_site_dmrg function
-[lowest_energy, energy_values, M, E_exact] = two_site_dmrg(N, bd, U, mu, t, NrEl,max_sweeps);
+% [lowest_energy, energy_values, M, E_exact] = two_site_dmrg(N, bd, U, mu, t, NrEl,max_sweeps);
+ [lowest_energy, full_sweep_energy, M, E_exact] = two_site_dmrg(N, bd, U, mu, t, NrEl, max_sweeps);
 
 % % % Display the final energy
 %  fprintf('Ground state energy: %.6f\n', energy);
